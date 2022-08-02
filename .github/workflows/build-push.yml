@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: telkomindonesia/s3-reverse-proxy:latest
+  IMAGE_NAME: ${{ github.repository }}:latest
 
 jobs:
   build-and-push-image:
@@ -16,9 +16,20 @@ jobs:
       packages: write
 
     steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.15
+
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: Build
+        run: go build -v
+
+      - name: Test
+        run: go test -v
+        
       - name: Log in to the Container registry
         uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
         with:

@@ -28,8 +28,7 @@ type Options struct {
 	Region                string
 	UpstreamInsecure      bool
 	UpstreamEndpoint      string
-	UpstreamAddressing    string
-	SourceAddressing      string
+	AddressingTranslation string
 	CertFile              string
 	KeyFile               string
 }
@@ -47,8 +46,7 @@ func NewOptions() Options {
 	kingpin.Flag("aws-region", "send requests to this AWS S3 region (env - AWS_REGION)").Envar("AWS_REGION").Default("eu-central-1").StringVar(&opts.Region)
 	kingpin.Flag("upstream-insecure", "use insecure HTTP for upstream connections (env - UPSTREAM_INSECURE)").Envar("UPSTREAM_INSECURE").BoolVar(&opts.UpstreamInsecure)
 	kingpin.Flag("upstream-endpoint", "use this S3 endpoint for upstream connections, instead of public AWS S3 (env - UPSTREAM_ENDPOINT)").Envar("UPSTREAM_ENDPOINT").StringVar(&opts.UpstreamEndpoint)
-	kingpin.Flag("upstream-addressing", "addressing information used by s3 server (env - UPSTREAM_ADDRESSING)").Envar("UPSTREAM_ADDRESSING").StringVar(&opts.UpstreamAddressing)
-	kingpin.Flag("source-addressing", "addressing information used by s3 client (env - SOURCE_ADDRESSING)").Envar("SOURCE_ADDRESSING").StringVar(&opts.SourceAddressing)
+	kingpin.Flag("addressing-translation", "enable S3 addressing translation (env - ADDRESSING_TRANSLATION)").PlaceHolder(`"path-to-virtual"|"virtual-to-path"`).Envar("ADDRESSING_TRANSLATION").StringVar(&opts.AddressingTranslation)
 	kingpin.Flag("cert-file", "path to the certificate file (env - CERT_FILE)").Envar("CERT_FILE").Default("").StringVar(&opts.CertFile)
 	kingpin.Flag("key-file", "path to the private key file (env - KEY_FILE)").Envar("KEY_FILE").Default("").StringVar(&opts.KeyFile)
 	kingpin.Parse()
@@ -97,8 +95,7 @@ func NewAwsS3ReverseProxy(opts Options) (*Handler, error) {
 		Debug:                 opts.Debug,
 		UpstreamScheme:        scheme,
 		UpstreamEndpoint:      opts.UpstreamEndpoint,
-		UpstreamAddressing:    opts.UpstreamAddressing,
-		SourceAddressing:      opts.SourceAddressing,
+		AddressingTranslation: opts.AddressingTranslation,
 		AllowedSourceEndpoint: opts.AllowedSourceEndpoint,
 		AllowedSourceSubnet:   parsedAllowedSourceSubnet,
 		AWSCredentials:        parsedAwsCredentials,

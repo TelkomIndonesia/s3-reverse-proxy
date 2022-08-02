@@ -5,12 +5,10 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -33,11 +31,8 @@ type Handler struct {
 	// Upstream S3 endpoint URL
 	UpstreamEndpoint string
 
-	// Upstrem S3 addressing scheme, "virtual" or "path". Will only have effect if `SourceAddressing` is different
-	UpstreamAddressing string
-
-	// Source S3 addressing scheme, "virtual" or "path". Will only have effect if `UpstreamAddressing` is different
-	SourceAddressing string
+	// translate S3 addressing. "virtual-path" or "path-virtual"
+	AddressingTranslation string
 
 	// Allowed endpoint, i.e., Host header to accept incoming requests from
 	AllowedSourceEndpoint string
@@ -87,16 +82,15 @@ func (h *Handler) signWithTime(signer *v4.Signer, req *http.Request, region stri
 		body = fakeseeker{req.Body}
 
 	} else if !digested && req.Body != nil {
-		f, err := ioutil.TempFile(os.TempDir(), "s3-proxy-*")
+		f, err := newFilebuffer()
 		if err != nil {
-			return fmt.Errorf("unable to create temporary file: %w", err)
+			return fmt.Errorf("unable to create file buffer: %w", err)
 		}
 		_, err = io.Copy(f, req.Body)
 		if err != nil {
 			return err
 		}
-
-		body = newFilebuffer(f)
+		body = f
 	}
 
 	_, err := signer.Sign(req, body, "s3", region, signTime)
@@ -197,7 +191,7 @@ func (h *Handler) assembleUpstreamReq(signer *v4.Signer, req *http.Request, regi
 
 	proxyURL := *req.URL
 	switch {
-	case h.UpstreamAddressing == "virtual" && h.SourceAddressing == "path":
+	case h.AddressingTranslation == "path-to-virtual":
 		bucket := ""
 		ss := strings.Split(req.URL.EscapedPath(), "/")
 		if len(ss) > 1 && ss[1] != "" {
@@ -213,7 +207,7 @@ func (h *Handler) assembleUpstreamReq(signer *v4.Signer, req *http.Request, regi
 		}
 		proxyURL.Path = strings.Join(ss, "/")
 
-	case h.UpstreamAddressing == "path" && h.SourceAddressing == "virtual":
+	case h.AddressingTranslation == "virtual-to-path":
 		bucket := ""
 		ss := strings.Split(req.Host, ".")
 		if len(ss) > 1 {

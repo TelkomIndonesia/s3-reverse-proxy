@@ -1,22 +1,28 @@
 package main
 
 import (
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 
 	log "github.com/sirupsen/logrus"
 )
+
+var _ io.ReadSeekCloser = &filebuffer{}
 
 type filebuffer struct {
 	*os.File
 	deleted bool
 }
 
-func newFilebuffer(f *os.File) *filebuffer {
-	return &filebuffer{f, false}
+func newFilebuffer() (*filebuffer, error) {
+	f, err := ioutil.TempFile(os.TempDir(), "s3-proxy-*")
+	if err != nil {
+		return nil, fmt.Errorf("unable to create temporary file: %w", err)
+	}
+	return &filebuffer{f, false}, nil
 }
-
-var _ io.ReadSeekCloser = &filebuffer{}
 
 func (fbuff *filebuffer) Close() (err error) {
 	err = fbuff.File.Close()

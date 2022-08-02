@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -17,7 +19,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var awsAuthorizationCredentialRegexp = regexp.MustCompile("Credential=([a-zA-Z0-9]+)/[0-9]+/([a-z]+-?[a-z]+-?[0-9]+)/s3/aws4_request")
+var awsAuthorizationCredentialRegexp = regexp.MustCompile("Credential=([a-zA-Z0-9]+)/[0-9]+/([^/]+-?[0-9]+?)/s3/aws4_request")
 var awsAuthorizationSignedHeadersRegexp = regexp.MustCompile("SignedHeaders=([a-zA-Z0-9;-]+)")
 
 // Handler is a special handler that re-signs any AWS S3 request and sends it upstream
@@ -30,6 +32,12 @@ type Handler struct {
 
 	// Upstream S3 endpoint URL
 	UpstreamEndpoint string
+
+	// Upstrem S3 addressing scheme, "virtual" or "path". Will only have effect if `SourceAddressing` is different
+	UpstreamAddressing string
+
+	// Source S3 addressing scheme, "virtual" or "path". Will only have effect if `UpstreamAddressing` is different
+	SourceAddressing string
 
 	// Allowed endpoint, i.e., Host header to accept incoming requests from
 	AllowedSourceEndpoint string
@@ -59,6 +67,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	defer proxyReq.Body.Close()
 
 	url := url.URL{Scheme: proxyReq.URL.Scheme, Host: proxyReq.Host}
 	proxy := httputil.NewSingleHostReverseProxy(&url)
@@ -71,13 +80,23 @@ func (h *Handler) sign(signer *v4.Signer, req *http.Request, region string) erro
 }
 
 func (h *Handler) signWithTime(signer *v4.Signer, req *http.Request, region string, signTime time.Time) error {
-	body := bytes.NewReader([]byte{})
-	if req.Body != nil {
-		b, err := ioutil.ReadAll(req.Body)
+	var body io.ReadSeeker = bytes.NewReader([]byte{})
+
+	_, digested := req.Header["X-Amz-Content-Sha256"]
+	if digested && req.Body != nil {
+		body = fakeseeker{req.Body}
+
+	} else if !digested && req.Body != nil {
+		f, err := ioutil.TempFile(os.TempDir(), "s3-proxy-*")
+		if err != nil {
+			return fmt.Errorf("unable to create temporary file: %w", err)
+		}
+		_, err = io.Copy(f, req.Body)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(b)
+
+		body = newFilebuffer(f)
 	}
 
 	_, err := signer.Sign(req, body, "s3", region, signTime)
@@ -177,6 +196,37 @@ func (h *Handler) assembleUpstreamReq(signer *v4.Signer, req *http.Request, regi
 	}
 
 	proxyURL := *req.URL
+	switch {
+	case h.UpstreamAddressing == "virtual" && h.SourceAddressing == "path":
+		bucket := ""
+		ss := strings.Split(req.URL.EscapedPath(), "/")
+		if len(ss) > 1 && ss[1] != "" {
+			bucket = ss[1]
+			if len(ss) > 2 {
+				ss = append(ss[:1], ss[2:]...)
+			} else {
+				ss = ss[:1]
+			}
+		}
+		if bucket != "" {
+			upstreamEndpoint = bucket + "." + upstreamEndpoint
+		}
+		proxyURL.Path = strings.Join(ss, "/")
+
+	case h.UpstreamAddressing == "path" && h.SourceAddressing == "virtual":
+		bucket := ""
+		ss := strings.Split(req.Host, ".")
+		if len(ss) > 1 {
+			bucket = ss[0]
+			ss = ss[1:]
+		}
+		upstreamEndpoint = strings.Join(ss, ".")
+		if len(proxyURL.Path) > 1 {
+			proxyURL.Path = "/" + bucket + proxyURL.Path
+		} else {
+			proxyURL.Path = "/" + bucket
+		}
+	}
 	proxyURL.Scheme = h.UpstreamScheme
 	proxyURL.Host = upstreamEndpoint
 	proxyURL.RawPath = req.URL.Path
@@ -189,6 +239,9 @@ func (h *Handler) assembleUpstreamReq(signer *v4.Signer, req *http.Request, regi
 	}
 	if val, ok := req.Header["Content-Md5"]; ok {
 		proxyReq.Header["Content-Md5"] = val
+	}
+	if val, ok := req.Header["X-Amz-Content-Sha256"]; ok {
+		proxyReq.Header["X-Amz-Content-Sha256"] = val
 	}
 
 	// Sign the upstream request

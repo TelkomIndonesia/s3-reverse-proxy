@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}:latest
+  # IMAGE_NAME: ${{ github.repository }}:latest
 
 jobs:
   build-and-push-image:
@@ -23,7 +23,11 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v3
-
+      
+      - name: downcase REPO
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}:latest" >>${GITHUB_ENV}
+  
       - name: Build
         run: go build -v
 

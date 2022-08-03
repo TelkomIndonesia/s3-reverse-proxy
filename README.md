@@ -4,9 +4,11 @@ The `aws-s3-reverse-proxy` will reverse-proxy all incoming S3 API calls to the p
 AWS S3 backend by rewriting the Host header and re-signing the original request.
 
 Possible use cases and scenarios include:
-  * Auditing & logging of S3 access from your local network or specific clients
-  * Redirecting S3 buckets to a different AWS Region
-  * AWS DirectConnect, to run a reverse-proxy from your local network
+
+* Auditing & logging of S3 access from your local network or specific clients
+* Redirecting S3 buckets to a different AWS Region
+* AWS DirectConnect, to run a reverse-proxy from your local network
+* Transforming addressing style, e.g. when then client use path-style but the upstream server only support virtual-hosted style
 
 AWS uses its [Signature
 v4]((https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html)) to
@@ -39,14 +41,15 @@ GitHub](https://github.com/Kriechi/aws-s3-reverse-proxy/releases).
 
 ## Features
 
-  * can reverse-proxy to a configurable AWS Region
-  * limits access based on source IP and subnet of the client
-  * limits access based on endpoint URL
-  * full instrumentation with Prometheus metrics
-  * HTTP and HTTPS support for clients
-  * uses secure HTTPS for upstream connections by default
-  * run as single binary or Docker container
-  * configuration via CLI, or using the same options in a config file
+* can reverse-proxy to a configurable AWS Region
+* limits access based on source IP and subnet of the client
+* limits access based on endpoint URL
+* full instrumentation with Prometheus metrics
+* HTTP and HTTPS support for clients
+* uses secure HTTPS for upstream connections by default
+* run as single binary or Docker container
+* configuration via CLI, or using the same options in a config file
+* can transform addressing style from path to virtual-hosted style and vice-versa
 
 ## Getting Started
 
@@ -55,20 +58,24 @@ information can be found in the [developer
 guide](https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html)
 
 The available options and help information can be displayed with:
-```
+
+```bash
 docker run --rm aws-s3-reverse-proxy --help
 ```
 
 ## Build
+
 All build dependencies and steps are contained in the `Dockerfile`:
-```
+
+```bash
 docker build -t aws-s3-reverse-proxy .
 ```
 
 ## Run
 
 ### Server Examples
-```
+
+```bash
 $ docker run --rm -ti \
   -p 8099 \
   aws-s3-reverse-proxy
@@ -78,7 +85,8 @@ $ docker run --rm -ti \
 ```
 
 You can also use env variables
-```
+
+```bash
 $ docker run --rm -ti \
   -p 8099 \
   -e ALLOWED_SOURCE_SUBNET=192.168.1.0/24 \
@@ -88,27 +96,32 @@ $ docker run --rm -ti \
 ```
 
 Or you can use a config file:
-```
+
+```bash
 # config.cfg file for aws-3-reverse-proxy
 --allowed-source-subnet=192.168.1.0/24
 --allowed-endpoint=my.host.example.com:8099
 --aws-credentials=AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
 ```
+
 And then run it like:
-```
-$ docker run --rm -it -v $(pwd)/config.cfg:/config.cfg -p 8099 aws-s3-reverse-proxy @config.cfg -v
+
+```bash
+docker run --rm -it -v $(pwd)/config.cfg:/config.cfg -p 8099 aws-s3-reverse-proxy @config.cfg -v
 ```
 
 Or just run the binary the old-fashioned way:
-```
+
+```bash
 ./aws-s3-reverse-proxy --help
 ```
 
 ### Client Examples
 
 Client with the [official awscli](https://aws.amazon.com/cli/):
-```
-$ aws s3 --endpoint-url http://my.host.example.com:8099 ls s3://my-bucket/
+
+```bash
+aws s3 --endpoint-url http://my.host.example.com:8099 ls s3://my-bucket/
 ```
 
 ## Contributing

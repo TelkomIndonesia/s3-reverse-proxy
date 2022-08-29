@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -62,7 +63,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer proxyReq.Body.Close()
+	// defer proxyReq.Body.Close()
 
 	url := url.URL{Scheme: proxyReq.URL.Scheme, Host: proxyReq.Host}
 	proxy := httputil.NewSingleHostReverseProxy(&url)
@@ -82,15 +83,20 @@ func (h *Handler) signWithTime(signer *v4.Signer, req *http.Request, region stri
 		body = fakeseeker{req.Body}
 
 	} else if !digested && req.Body != nil {
-		f, err := newFilebuffer()
-		if err != nil {
-			return fmt.Errorf("unable to create file buffer: %w", err)
-		}
-		_, err = io.Copy(f, req.Body)
+		// f, err := newFilebuffer()
+		// if err != nil {
+		// 	return fmt.Errorf("unable to create file buffer: %w", err)
+		// }
+		// _, err = io.Copy(f, req.Body)
+		// if err != nil {
+		// 	return err
+		// }
+		// body = f
+		b, err := ioutil.ReadAll(req.Body)
 		if err != nil {
 			return err
 		}
-		body = f
+		body = bytes.NewReader(b)
 	}
 
 	_, err := signer.Sign(req, body, "s3", region, signTime)
